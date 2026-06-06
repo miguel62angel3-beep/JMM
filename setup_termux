@@ -1,0 +1,130 @@
+#!/bin/bash
+# setup_termux_phone.sh — Instalación completa del simulador
+# Prerequisito: archivos en /sdcard/simulador_plataforma/
+# Ejecutar: bash /sdcard/simulador_plataforma/setup_termux_phone.sh
+
+SDCARD=/sdcard/simulador_plataforma
+PROYECTO=~/simulador_plataforma
+MTX_URL="https://github.com/bluenviron/mediamtx/releases/download/v1.9.3/mediamtx_v1.9.3_linux_arm64v8.tar.gz"
+
+echo ""
+echo "╔══════════════════════════════════════════════╗"
+echo "║   Setup Simulador de Cámaras — Android       ║"
+echo "╚══════════════════════════════════════════════╝"
+
+# ── 1. Permisos de almacenamiento ──────────────────
+echo "[1/6] Permisos de almacenamiento..."
+termux-setup-storage 2>/dev/null || true
+sleep 2
+
+# ── 2. Paquetes del sistema ────────────────────────
+echo "[2/6] Instalando paquetes..."
+pkg update -y 2>/dev/null || true
+pkg install -y python ffmpeg netcat-openbsd curl 2>/dev/null || \
+    pkg install -y python ffmpeg netcat-openbsd curl
+
+# ── 3. Copiar toda la carpeta del simulador ────────
+echo "[3/6] Copiando carpeta del simulador..."
+mkdir -p "$PROYECTO"
+mkdir -p "$SDCARD/videos"
+
+# Copiar todos los archivos de /sdcard/simulador_plataforma/ a ~/simulador_plataforma/
+# excepto la carpeta videos (se maneja con symlink)
+for f in "$SDCARD"/*; do
+    nombre=$(basename "$f")
+    # saltar la carpeta videos y archivos grandes no necesarios
+    [ "$nombre" = "videos" ] && continue
+    [ "$nombre" = "*.log" ] && continue
+    if [ -f "$f" ]; then
+        cp "$f" "$PROYECTO/$nombre"
+    fi
+done
+
+# Renombrar el simulador al nombre que usa el script de inicio
+cp "$SDCARD/simulador_camaras_android.py" "$PROYECTO/simulador_camaras.py" 2>/dev/null || true
+
+# Dar permisos de ejecución a los scripts shell
+chmod +x "$PROYECTO"/*.sh 2>/dev/null || true
+
+# ── 4. Descargar MediaMTX ──────────────────────────
+echo "[4/6] Instalando MediaMTX..."
+if [ -f "$SDCARD/mediamtx_arm64" ]; then
+    echo "      → Copiando binario local (mediamtx_arm64)"
+    cp "$SDCARD/mediamtx_arm64" "$PROYECTO/mediamtx"
+elif [ -f "$SDCARD/mediamtx" ]; then
+    echo "      → Copiando binario local (mediamtx)"
+    cp "$SDCARD/mediamtx" "$PROYECTO/mediamtx"
+else
+    echo "      → Descargando MediaMTX v1.9.3 desde GitHub..."
+    curl -L --progress-bar -o "$PROYECTO/mediamtx.tar.gz" "$MTX_URL"
+    tar -xzf "$PROYECTO/mediamtx.tar.gz" -C "$PROYECTO" mediamtx
+    rm -f "$PROYECTO/mediamtx.tar.gz"
+    echo "      → Descarga completa."
+fi
+chmod +x "$PROYECTO/mediamtx"
+
+# ── 5. Enlace simbólico de videos ─────────────────
+echo "[5/6] Enlazando carpeta de videos..."
+rm -f "$PROYECTO/videos"
+ln -sf "$SDCARD/videos" "$PROYECTO/videos"
+
+# ── 6. Configuración de MediaMTX ──────────────────
+echo "[6/6] Escribiendo configuración de MediaMTX..."
+cat > ~/mediamtx.yml << 'YMLEOF'
+logLevel: warn
+logDestinations: [file]
+logFile: /sdcard/simulador_plataforma/mediamtx.log
+
+rtsp: true
+rtspAddress: :8554
+
+hls: true
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsVariant: lowLatency
+
+webrtc: true
+webrtcAddress: :8889
+
+api: yes
+apiAddress: :9997
+
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+        path:
+      - action: read
+        path:
+      - action: playback
+        path:
+
+paths:
+  all: {}
+YMLEOF
+
+# ── Widget Termux:Widget (opcional) ───────────────
+if [ -d ~/.shortcuts ]; then
+    mkdir -p ~/.shortcuts/tasks
+    cp "$SDCARD/iniciar_simulador.sh" ~/.shortcuts/tasks/Iniciar_Simulador 2>/dev/null || true
+    chmod +x ~/.shortcuts/tasks/Iniciar_Simulador 2>/dev/null || true
+fi
+
+mkdir -p ~/.termux
+grep -q "allow-external-apps" ~/.termux/termux.properties 2>/dev/null \
+    || echo "allow-external-apps = true" >> ~/.termux/termux.properties
+termux-reload-settings 2>/dev/null || true
+
+echo ""
+echo "╔══════════════════════════════════════════════╗"
+echo "║  ✓ Instalación completada                    ║"
+echo "╠══════════════════════════════════════════════╣"
+echo "║  Pon tus .mp4 en:                            ║"
+echo "║    $SDCARD/videos/"
+echo "║                                              ║"
+echo "║  Para iniciar la simulación:                 ║"
+echo "║    bash ~/simulador_plataforma/iniciar_simulador.sh"
+echo "╚══════════════════════════════════════════════╝"
