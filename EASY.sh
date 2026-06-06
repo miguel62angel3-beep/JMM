@@ -1,59 +1,73 @@
-cat << 'EOF' > setup_comodidad_total.sh
 #!/bin/bash
+# EASY.sh
+# Instalación completa desde GitHub usando WGET. Ejecutar una sola vez.
 
-# =====================================================================
-#  PROYECTO COMODIDAD: DESPLIEGUE MASIVO 100% DESATENDIDO
-# =====================================================================
+set -e
+GITHUB_URL="https://githubusercontent.com"
+PROYECTO=~/simulador_plataforma
 
-# CONFIGURACIÓN INICIAL (Modifica aquí la clave para los 100+ equipos)
-CONTRASENA_POR_DEFECTO="Dispositivo2026!"
+echo "=== Setup Simulador de Cámaras Android (Vía Wget) ==="
 
-echo "========================================================="
-echo "       INICIANDO DESPLIEGUE AUTOMATIZADO EN MASA         "
-echo "========================================================="
+# 1. Permisos de almacenamiento (Acepta automáticamente el aviso interactivo)
+echo "" | termux-setup-storage 2>/dev/null || true
+sleep 2
 
-# 1. ACTUALIZACIÓN E INSTALACIÓN CORE (Forzando respuestas afirmativas)
-echo "[+] Actualizando repositorios e instalando dependencias..."
-export DEBIAN_FRONTEND=noninteractive
-pkg update -y -o Dpkg::Options::="--force-confold"
-pkg upgrade -y -o Dpkg::Options::="--force-confold"
-pkg install -y openssh git curl wget tmux neovim proot-distro termux-tools
+# 2. Paquetes del sistema
+pkg update -y
+pkg install -y python ffmpeg netcat-openbsd wget
 
-# 2. CONFIGURACIÓN DE SEGURIDAD AUTOMÁTICA (Cero Prompts)
-echo "[+] Configurando credenciales de acceso..."
-echo -e "$CONTRASENA_POR_DEFECTO\n$CONTRASENA_POR_DEFECTO" | passwd > /dev/null 2>&1
+# 3. Dependencias Python
+pip install --quiet flask flask-cors requests
 
-# 3. AUTOMATIZACIÓN DE PERSISTENCIA (SSHD AL INICIO)
-echo "[+] Configurando persistencia del servidor..."
-sshd 
+# 4. Estructura de carpetas local
+mkdir -p "$PROYECTO"
+mkdir -p ~/storage/shared/simulador_plataforma/videos
 
-mkdir -p ~/.bashrc_fragments
-if [ ! -f ~/.bashrc ]; then touch ~/.bashrc; fi
+# 5. Descargar archivos del simulador directamente de GitHub usando Wget
+echo "Descargando archivos desde GitHub..."
+wget -q --no-check-certificate "$GITHUB_URL/simulador_camaras_android.py" -O "$PROYECTO/simulador_camaras.py"
+wget -q --no-check-certificate "$GITHUB_URL/web_server_android.py"        -O "$PROYECTO/web_server_simulador.py"
+wget -q --no-check-certificate "$GITHUB_URL/dashboard_simulador.html"     -O "$PROYECTO/dashboard_simulador.html"
+wget -q --no-check-certificate "$GITHUB_URL/iniciar_simulador.sh"         -O "$PROYECTO/iniciar_simulador.sh"
+wget -q --no-check-certificate "$GITHUB_URL/detener_simulador.sh"         -O "$PROYECTO/detener_simulador.sh"
+chmod +x "$PROYECTO/iniciar_simulador.sh" "$PROYECTO/detener_simulador.sh"
 
-if ! grep -q "sshd" ~/.bashrc; then
-    echo "sshd" >> ~/.bashrc
-fi
+# 6. Descargar Binario MediaMTX desde GitHub
+wget -q --no-check-certificate "$GITHUB_URL/mediamtx_arm64" -O "$PROYECTO/mediamtx"
+chmod +x "$PROYECTO/mediamtx"
 
-# 4. ENLACE DE ALMACENAMIENTO (Solución desatendida para Android)
-# NOTA: En Android moderno, termux-setup-storage SIEMPRE lanzará un pop-up visual del sistema.
-# Para evitar que el script se pause esperando, lo enviamos al fondo.
-echo "[+] Solicitando permisos de almacenamiento en segundo plano..."
-termux-setup-storage &
+# 7. Enlace simbólico de videos apuntando a la memoria interna compartida
+ln -sf ~/storage/shared/simulador_plataforma/videos "$PROYECTO/videos"
 
-# 5. RECOLECCIÓN AUTOMÁTICA DE PARÁMETROS DE RED
-echo "[+] Extrayendo parámetros de red..."
-USUARIO=$(whoami)
-IP_LOCAL=$(ifconfig 2>/dev/null | grep -E "inet " | grep -v "127.0.0.1" | awk '{print $2}' | head -n 1)
+# 8. Configuración de MediaMTX
+cat > ~/mediamtx.yml << 'EOF'
+rtspAddress: :8554
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+webrtcAddress: :8889
+api: yes
+apiAddress: :9997
 
-if [ -z "$IP_LOCAL" ]; then
-    IP_LOCAL=$(ip addr show | grep -E "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d/ -f1 | head -n 1)
-fi
-
-echo "========================================================="
-echo "        [✔] ¡DISPOSITIVO CONFIGURADO CON ÉXITO!          "
-echo "========================================================="
-echo "Acceso remoto listo para este terminal:"
-echo "  ssh ${USUARIO}@${IP_LOCAL:-DETECTANDO_IP} -p 8022"
-echo "========================================================="
+paths:
+  all: {}
 EOF
-chmod +x setup_comodidad_total.sh && ./setup_comodidad_total.sh
+
+# 9. Widgets Termux:Widget
+mkdir -p ~/.shortcuts/tasks
+cp "$PROYECTO/iniciar_simulador.sh" ~/.shortcuts/tasks/Iniciar_Simulador
+cp "$PROYECTO/detener_simulador.sh" ~/.shortcuts/tasks/Detener_Simulador
+chmod +x ~/.shortcuts/tasks/Iniciar_Simulador ~/.shortcuts/tasks/Detener_Simulador
+
+# 10. Habilitar apps externas (Termux:Widget) sin colgar la app
+mkdir -p ~/.termux
+touch ~/.termux/termux.properties
+sed -i '/allow-external-apps/d' ~/.termux/termux.properties 2>/dev/null || true
+echo "allow-external-apps = true" >> ~/.termux/termux.properties
+
+echo ""
+echo "=== ¡Instalación Exitosa! ==="
+echo "Pon tus videos .mp4 en la carpeta de tu celular: simulador_plataforma/videos/"
+echo "El entorno se reiniciará en 3 segundos para aplicar los cambios..."
+sleep 3
+
+logout
