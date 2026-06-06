@@ -1,73 +1,85 @@
 #!/bin/bash
-# EASY.sh
-# Instalación completa desde GitHub usando WGET. Ejecutar una sola vez.
 
+# Asegurar que el script termine si ocurre un error inesperado (excepto los controlados)
 set -e
-GITHUB_URL="https://githubusercontent.com"
-PROYECTO=~/simulador_plataforma
 
-echo "=== Setup Simulador de Cámaras Android (Vía Wget) ==="
+echo "=================================================="
+echo "   Asistente de Instalación Robusta de SSH"
+echo "=================================================="
 
-# 1. Permisos de almacenamiento (Acepta automáticamente el aviso interactivo)
-echo "" | termux-setup-storage 2>/dev/null || true
-sleep 2
+# 1. Solicitar intervención y confirmación del usuario
+echo -n "¿Deseas proceder con la instalación y configuración de SSH? (s/n): "
+read -r respuesta
 
-# 2. Paquetes del sistema
-pkg update -y
-pkg install -y python ffmpeg netcat-openbsd wget
+if [[ ! "$respuesta" =~ ^[sS]$ && ! "$respuesta" =~ ^[yY]$ ]]; then
+    echo "Operación cancelada por el usuario."
+    exit 0
+fi
 
-# 3. Dependencias Python
-pip install --quiet flask flask-cors requests
+# 2. Verificar que se ejecute con privilegios de administrador (sudo)
+if [ "$EUID" -ne 0 ]; then
+    echo "Error: Este script requiere privilegios de administrador."
+    echo "Por favor, ejecútalo usando: sudo ./instalar_ssh.sh"
+    exit 1
+fi
 
-# 4. Estructura de carpetas local
-mkdir -p "$PROYECTO"
-mkdir -p ~/storage/shared/simulador_plataforma/videos
+# 3. Detectar el gestor de paquetes del sistema operativo
+echo "Detectando sistema operativo..."
+if [ -f /etc/debian_version ]; then
+    PAQUETE="openssh-server"
+    ACTUALIZAR_CMD="apt-get update -y"
+    INSTALAR_CMD="apt-get install -y $PAQUETE"
+    SERVICIO="ssh"
+elif [ -f /etc/redhat-release ] || [ -f /etc/fedora-release ]; then
+    PAQUETE="openssh-server"
+    ACTUALIZAR_CMD="dnf check-update -y || true" # dnf devuelve 100 si hay actualizaciones, evitamos que rompa el script
+    INSTALAR_CMD="dnf install -y $PAQUETE"
+    SERVICIO="sshd"
+else
+    echo "Error: Sistema operativo no compatible o no detectado."
+    exit 1
+fi
 
-# 5. Descargar archivos del simulador directamente de GitHub usando Wget
-echo "Descargando archivos desde GitHub..."
-wget -q --no-check-certificate "$GITHUB_URL/simulador_camaras_android.py" -O "$PROYECTO/simulador_camaras.py"
-wget -q --no-check-certificate "$GITHUB_URL/web_server_android.py"        -O "$PROYECTO/web_server_simulador.py"
-wget -q --no-check-certificate "$GITHUB_URL/dashboard_simulador.html"     -O "$PROYECTO/dashboard_simulador.html"
-wget -q --no-check-certificate "$GITHUB_URL/iniciar_simulador.sh"         -O "$PROYECTO/iniciar_simulador.sh"
-wget -q --no-check-certificate "$GITHUB_URL/detener_simulador.sh"         -O "$PROYECTO/detener_simulador.sh"
-chmod +x "$PROYECTO/iniciar_simulador.sh" "$PROYECTO/detener_simulador.sh"
+# 4. Actualizar las listas de paquetes de forma segura
+echo "Actualizando los repositorios del sistema..."
+if eval "$ACTUALIZAR_CMD"; then
+    echo "Repositorios actualizados correctamente."
+else
+    echo "Advertencia: No se pudieron actualizar los repositorios, intentando instalar de todos modos..."
+fi
 
-# 6. Descargar Binario MediaMTX desde GitHub
-wget -q --no-check-certificate "$GITHUB_URL/mediamtx_arm64" -O "$PROYECTO/mediamtx"
-chmod +x "$PROYECTO/mediamtx"
+# 5. Instalación robusta del paquete SSH
+echo "Instalando $PAQUETE..."
+if eval "$INSTALAR_CMD"; then
+    echo "¡Instalación exitosa de SSH!"
+else
+    echo "Error crítico: Falló la instalación de SSH."
+    exit 1
+fi
 
-# 7. Enlace simbólico de videos apuntando a la memoria interna compartida
-ln -sf ~/storage/shared/simulador_plataforma/videos "$PROYECTO/videos"
+# 6. Configurar, habilitar y arrancar el servicio de forma persistente
+echo "Configurando el servicio para que inicie con el sistema..."
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable "$SERVICIO"
+    systemctl start "$SERVICIO"
+    
+    # Verificación final del estado
+    if systemctl is-active --quiet "$SERVICIO"; then
+        echo "El servicio SSH está activo y funcionando correctamente."
+    else
+        echo "Error: El servicio SSH se instaló pero no se pudo iniciar."
+        exit 1
+    fi
+else
+    # Alternativa para sistemas antiguos sin systemd
+    service "$SERVICIO" start
+    chkconfig "$SERVICIO" on 2>/dev/null || update-rc.d "$SERVICIO" defaults
+    echo "Servicio SSH iniciado mediante el gestor tradicional."
+fi
 
-# 8. Configuración de MediaMTX
-cat > ~/mediamtx.yml << 'EOF'
-rtspAddress: :8554
-hlsAddress: :8888
-hlsAlwaysRemux: yes
-webrtcAddress: :8889
-api: yes
-apiAddress: :9997
-
-paths:
-  all: {}
-EOF
-
-# 9. Widgets Termux:Widget
-mkdir -p ~/.shortcuts/tasks
-cp "$PROYECTO/iniciar_simulador.sh" ~/.shortcuts/tasks/Iniciar_Simulador
-cp "$PROYECTO/detener_simulador.sh" ~/.shortcuts/tasks/Detener_Simulador
-chmod +x ~/.shortcuts/tasks/Iniciar_Simulador ~/.shortcuts/tasks/Detener_Simulador
-
-# 10. Habilitar apps externas (Termux:Widget) sin colgar la app
-mkdir -p ~/.termux
-touch ~/.termux/termux.properties
-sed -i '/allow-external-apps/d' ~/.termux/termux.properties 2>/dev/null || true
-echo "allow-external-apps = true" >> ~/.termux/termux.properties
-
-echo ""
-echo "=== ¡Instalación Exitosa! ==="
-echo "Pon tus videos .mp4 en la carpeta de tu celular: simulador_plataforma/videos/"
-echo "El entorno se reiniciará en 3 segundos para aplicar los cambios..."
-sleep 3
-
-logout
+# 7. Resumen de conectividad para el usuario
+echo "=================================================="
+echo "¡Proceso finalizado con éxito!"
+echo "Para conectarte a esta máquina, usa:"
+echo "ssh tu_usuario@$(hostname -I | awk '{print $1}')"
+echo "=================================================="
