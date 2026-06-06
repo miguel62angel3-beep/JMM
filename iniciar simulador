@@ -1,0 +1,71 @@
+#!/bin/bash
+# iniciar_simulador.sh — Arranque desatendido: MediaMTX → Simulador
+# No requiere ninguna interacción manual.
+
+PROYECTO=~/simulador_plataforma
+LOG=/sdcard/simulador_plataforma
+
+mkdir -p "$LOG"
+cd "$PROYECTO" || { echo "[ERROR] No existe $PROYECTO. Ejecuta primero setup_termux_phone.sh"; exit 1; }
+
+echo ""
+echo "╔══════════════════════════════════════════════╗"
+echo "║   Iniciando Simulador de Cámaras IP          ║"
+echo "╚══════════════════════════════════════════════╝"
+
+# ── 1. MediaMTX ────────────────────────────────────
+if pgrep -x "mediamtx" > /dev/null 2>&1; then
+    echo "[✓] MediaMTX ya está corriendo."
+else
+    echo "[1] Iniciando MediaMTX..."
+    ./mediamtx ~/mediamtx.yml >> "$LOG/mediamtx.log" 2>&1 &
+    disown
+
+    echo -n "    Esperando puerto 8554"
+    ESPERA=0
+    while ! nc -z localhost 8554 2>/dev/null; do
+        sleep 1
+        ESPERA=$((ESPERA + 1))
+        echo -n "."
+        if [ "$ESPERA" -ge 20 ]; then
+            echo ""
+            echo "[ERROR] MediaMTX no respondió en 20s."
+            echo "        Ver log: $LOG/mediamtx.log"
+            exit 1
+        fi
+    done
+    echo " OK (${ESPERA}s)"
+fi
+
+# ── 2. Simulador de cámaras ────────────────────────
+if pgrep -f "simulador_camaras.py" > /dev/null 2>&1; then
+    echo "[✓] Simulador ya está corriendo."
+else
+    echo "[2] Iniciando simulador..."
+    python simulador_camaras.py >> "$LOG/simulador.log" 2>&1 &
+    disown
+    sleep 1
+    if pgrep -f "simulador_camaras.py" > /dev/null 2>&1; then
+        echo "[✓] Simulador activo."
+    else
+        echo "[ERROR] El simulador no arrancó."
+        echo "        Ver log: $LOG/simulador.log"
+        exit 1
+    fi
+fi
+
+# ── Resumen ────────────────────────────────────────
+IP=$(ip addr show 2>/dev/null | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d/ -f1 | head -n1)
+IP=${IP:-<ip-del-telefono>}
+
+echo ""
+echo "╔══════════════════════════════════════════════╗"
+echo "║  ✓ Servicios activos                         ║"
+echo "╠══════════════════════════════════════════════╣"
+echo "║  RTSP:   rtsp://$IP:8554/camara_N"
+echo "║  HLS:    http://$IP:8888/camara_N/"
+echo "║  WebRTC: http://$IP:8889/camara_N/"
+echo "╠══════════════════════════════════════════════╣"
+echo "║  Log simulador: tail -f $LOG/simulador.log"
+echo "║  Log MediaMTX:  tail -f $LOG/mediamtx.log"
+echo "╚══════════════════════════════════════════════╝"
