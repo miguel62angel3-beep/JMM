@@ -15,7 +15,7 @@ echo "╚═══════════════════════�
 # ── 1. Permisos de almacenamiento ──────────────────
 echo "[1/6] Permisos de almacenamiento..."
 termux-setup-storage 2>/dev/null || true
-sleep 2
+sleep 30
 
 # ── 2. Paquetes del sistema ────────────────────────
 echo "[2/6] Instalando paquetes..."
@@ -26,22 +26,12 @@ pkg install -y python ffmpeg netcat-openbsd curl 2>/dev/null || \
 # ── 3. Copiar toda la carpeta del simulador ────────
 echo "[3/6] Copiando carpeta del simulador..."
 mkdir -p "$PROYECTO"
-mkdir -p "$SDCARD/videos"
 
-# Copiar todos los archivos de /sdcard/simulador_plataforma/ a ~/simulador_plataforma/
-# excepto la carpeta videos (se maneja con symlink)
-for f in "$SDCARD"/*; do
-    nombre=$(basename "$f")
-    # saltar la carpeta videos y archivos grandes no necesarios
-    [ "$nombre" = "videos" ] && continue
-    [ "$nombre" = "*.log" ] && continue
-    if [ -f "$f" ]; then
-        cp "$f" "$PROYECTO/$nombre"
-    fi
-done
+# Copiar todo el contenido de /sdcard/simulador_plataforma/ a ~/simulador_plataforma/
+cp -r "$SDCARD"/* "$PROYECTO/"
 
 # Renombrar el simulador al nombre que usa el script de inicio
-cp "$SDCARD/simulador_camaras_android.py" "$PROYECTO/simulador_camaras.py" 2>/dev/null || true
+cp "$PROYECTO/simulador_camaras_android.py" "$PROYECTO/simulador_camaras.py" 2>/dev/null || true
 
 # Dar permisos de ejecución a los scripts shell
 chmod +x "$PROYECTO"/*.sh 2>/dev/null || true
@@ -63,10 +53,9 @@ else
 fi
 chmod +x "$PROYECTO/mediamtx"
 
-# ── 5. Enlace simbólico de videos ─────────────────
-echo "[5/6] Enlazando carpeta de videos..."
-rm -f "$PROYECTO/videos"
-ln -sf "$SDCARD/videos" "$PROYECTO/videos"
+# ── 5. Asegurar carpeta de videos ─────────────────
+echo "[5/6] Asegurando carpeta de videos..."
+mkdir -p "$PROYECTO/videos"
 
 # ── 6. Configuración de MediaMTX ──────────────────
 echo "[6/6] Escribiendo configuración de MediaMTX..."
@@ -122,9 +111,6 @@ echo ""
 echo "╔══════════════════════════════════════════════╗"
 echo "║  ✓ Instalación completada                    ║"
 echo "╠══════════════════════════════════════════════╣"
-echo "║  Pon tus .mp4 en:                            ║"
-echo "║    $SDCARD/videos/"
-echo "║                                              ║"
 echo "║  Para iniciar la simulación:                 ║"
 echo "║    bash ~/simulador_plataforma/iniciar_simulador.sh"
 echo "╚══════════════════════════════════════════════╝"
