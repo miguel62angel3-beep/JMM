@@ -15,33 +15,38 @@ echo "╚═══════════════════════�
 # ── 1. Permisos de almacenamiento ──────────────────
 echo "[1/6] Permisos de almacenamiento..."
 termux-setup-storage 2>/dev/null || true
-sleep 10
+sleep 2
 
 # ── 2. Paquetes del sistema ────────────────────────
-echo "[2/6] Instalando paquetes y librerías..."
+echo "[2/6] Instalando paquetes..."
 pkg update -y 2>/dev/null || true
 pkg install -y python ffmpeg netcat-openbsd curl 2>/dev/null || \
     pkg install -y python ffmpeg netcat-openbsd curl
 
-echo "      → Instalando dependencias de Python (Flask, Flask-CORS, Requests)..."
-pip install flask flask-cors requests 2>/dev/null || \
-    pip install flask flask-cors requests
-
 # ── 3. Copiar toda la carpeta del simulador ────────
 echo "[3/6] Copiando carpeta del simulador..."
 mkdir -p "$PROYECTO"
+mkdir -p "$SDCARD/videos"
 
-# Copiar todo el contenido de /sdcard/simulador_plataforma/ a ~/simulador_plataforma/
-cp -r "$SDCARD"/* "$PROYECTO/"
+# Copiar todos los archivos de /sdcard/simulador_plataforma/ a ~/simulador_plataforma/
+# excepto la carpeta videos (se maneja con symlink)
+for f in "$SDCARD"/*; do
+    nombre=$(basename "$f")
+    # saltar la carpeta videos y archivos grandes no necesarios
+    [ "$nombre" = "videos" ] && continue
+    [ "$nombre" = "*.log" ] && continue
+    if [ -f "$f" ]; then
+        cp "$f" "$PROYECTO/$nombre"
+    fi
+done
 
-# Renombrar el simulador y el webserver a los nombres estándar
-cp "$PROYECTO/simulador_camaras_android.py" "$PROYECTO/simulador_camaras.py" 2>/dev/null || true
-cp "$PROYECTO/web_server_android.py" "$PROYECTO/web_server_simulador.py" 2>/dev/null || true
+# Renombrar el simulador al nombre que usa el script de inicio
+cp "$SDCARD/simulador_camaras_android.py" "$PROYECTO/simulador_camaras.py" 2>/dev/null || true
 
 # Dar permisos de ejecución a los scripts shell
 chmod +x "$PROYECTO"/*.sh 2>/dev/null || true
 
-# ── 4. Descargar o Compilar MediaMTX ────────────────
+# ── 4. Descargar MediaMTX ──────────────────────────
 echo "[4/6] Instalando MediaMTX..."
 if [ -f "$SDCARD/mediamtx_arm64" ]; then
     echo "      → Copiando binario local (mediamtx_arm64)"
@@ -50,16 +55,18 @@ elif [ -f "$SDCARD/mediamtx" ]; then
     echo "      → Copiando binario local (mediamtx)"
     cp "$SDCARD/mediamtx" "$PROYECTO/mediamtx"
 else
-    echo "      → No se encontró binario local compatible en $SDCARD."
-    echo "      → Iniciando compilación nativa en el dispositivo..."
-    chmod +x "$PROYECTO/build_native_mediamtx.sh"
-    bash "$PROYECTO/build_native_mediamtx.sh"
+    echo "      → Descargando MediaMTX v1.9.3 desde GitHub..."
+    curl -L --progress-bar -o "$PROYECTO/mediamtx.tar.gz" "$MTX_URL"
+    tar -xzf "$PROYECTO/mediamtx.tar.gz" -C "$PROYECTO" mediamtx
+    rm -f "$PROYECTO/mediamtx.tar.gz"
+    echo "      → Descarga completa."
 fi
-chmod +x "$PROYECTO/mediamtx" 2>/dev/null || true
+chmod +x "$PROYECTO/mediamtx"
 
-# ── 5. Asegurar carpeta de videos ─────────────────
-echo "[5/6] Asegurando carpeta de videos..."
-mkdir -p "$PROYECTO/videos"
+# ── 5. Enlace simbólico de videos ─────────────────
+echo "[5/6] Enlazando carpeta de videos..."
+rm -f "$PROYECTO/videos"
+ln -sf "$SDCARD/videos" "$PROYECTO/videos"
 
 # ── 6. Configuración de MediaMTX ──────────────────
 echo "[6/6] Escribiendo configuración de MediaMTX..."
@@ -115,6 +122,9 @@ echo ""
 echo "╔══════════════════════════════════════════════╗"
 echo "║  ✓ Instalación completada                    ║"
 echo "╠══════════════════════════════════════════════╣"
+echo "║  Pon tus .mp4 en:                            ║"
+echo "║    $SDCARD/videos/"
+echo "║                                              ║"
 echo "║  Para iniciar la simulación:                 ║"
 echo "║    bash ~/simulador_plataforma/iniciar_simulador.sh"
 echo "╚══════════════════════════════════════════════╝"
