@@ -54,37 +54,18 @@ else
     fi
 fi
 
-# ── 3. Servidor Web ────────────────────────────────
-if pgrep -f "web_server_simulador.py" > /dev/null 2>&1; then
-    echo "[✓] Servidor web ya está corriendo."
-else
-    echo "[3] Iniciando servidor web..."
-    python web_server_simulador.py >> "$LOG/webserver.log" 2>&1 &
-    disown
-    sleep 1
-    if pgrep -f "web_server_simulador.py" > /dev/null 2>&1; then
-        echo "[✓] Servidor web activo."
-    else
-        echo "[ERROR] El servidor web no arrancó."
-        echo "        Ver log: $LOG/webserver.log"
-        exit 1
-    fi
-fi
-
 # ── Resumen ────────────────────────────────────────
 IP=$(ip addr show 2>/dev/null | grep "inet " | grep -v "127.0.0.1" | awk '{print $2}' | cut -d/ -f1 | head -n1)
-IP=${IP:-localhost}
+IP=${IP:-<ip-del-telefono>}
 
 echo ""
 echo "╔══════════════════════════════════════════════╗"
 echo "║  ✓ Servicios activos                         ║"
 echo "╠══════════════════════════════════════════════╣"
-echo "║  Web:    http://$IP:5001/"
 echo "║  RTSP:   rtsp://$IP:8554/camara_N"
 echo "║  HLS:    http://$IP:8888/camara_N/"
 echo "║  WebRTC: http://$IP:8889/camara_N/"
 echo "╠══════════════════════════════════════════════╣"
-echo "║  Log WebServer: tail -f $LOG/webserver.log"
 echo "║  Log simulador: tail -f $LOG/simulador.log"
 echo "║  Log MediaMTX:  tail -f $LOG/mediamtx.log"
 echo "╚══════════════════════════════════════════════╝"
