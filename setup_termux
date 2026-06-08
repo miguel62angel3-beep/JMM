@@ -19,8 +19,8 @@ sleep 2
 
 # ── 2. Paquetes del sistema ────────────────────────
 echo "[2/6] Instalando paquetes..."
-pkg update -y 2>/dev/null || true
-pkg install -y python ffmpeg netcat-openbsd curl 2>/dev/null || \
+pkg update  2>/dev/null || true
+pkg install  python ffmpeg netcat-openbsd curl 2>/dev/null || \
     pkg install -y python ffmpeg netcat-openbsd curl
 
 # ── 3. Copiar toda la carpeta del simulador ────────
