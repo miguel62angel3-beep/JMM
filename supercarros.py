@@ -1,73 +1,48 @@
-import os
-import time
-import random
-import threading
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import xml.etree.ElementTree as ET
+import os
 
-class ScraperAutosConfigurable:
-    def __init__(self, lista_urls, carpeta_salida="autos", max_workers=5, espera_min=0.5, espera_max=2.0):
-        self.lista_urls = lista_urls
-        self.carpeta_salida = carpeta_salida
-        self.max_workers = max_workers
-        self.espera_min = espera_min
-        self.espera_max = espera_max
-        self.log_file = "autos_descargados.log"
-        self.lock = threading.Lock()  # Bloqueo para evitar colisiones al escribir en el log
+def procesar_sitemap(url_sitemap):
+    # 1. Descargar el contenido del sitemap
+    print(f"Descargando {url_sitemap}...")
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    response = requests.get(url_sitemap, headers=headers)
+    
+    if response.status_code != 200:
+        print("Error al descargar el sitemap.")
+        return
+
+    # 2. Parsear el XML
+    root = ET.fromstring(response.content)
+    
+    # Usamos sets para asegurar que no haya duplicados
+    dealers = set()
+    autos = set()
+    
+    # Namespace común en sitemaps
+    ns = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+    
+    for url in root.findall('.//ns:loc', ns):
+        link = url.text
+        if "/dealers/" in link:
+            dealers.add(link)
+        else:
+            autos.add(link)
+    
+    # 3. Guardar en archivos (sobrescribir o crear)
+    with open('dealers.txt', 'w', encoding='utf-8') as f:
+        f.write('\n'.join(sorted(dealers)))
+    
+    with open('autos.txt', 'w', encoding='utf-8') as f:
+        f.write('\n'.join(sorted(autos)))
         
-        if not os.path.exists(self.carpeta_salida):
-            os.makedirs(self.carpeta_salida)
+    print(f"Proceso finalizado.")
+    print(f"Total dealers guardados: {len(dealers)}")
+    print(f"Total autos guardados: {len(autos)}")
 
-    def obtener_procesados(self):
-        if os.path.exists(self.log_file):
-            with open(self.log_file, "r") as f:
-                return set(line.strip() for line in f)
-        return set()
-
-    def descargar_url(self, url):
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        
-        try:
-            # Retardo aleatorio para comportamiento humanoide
-            time.sleep(random.uniform(self.espera_min, self.espera_max))
-            
-            response = requests.get(url, headers=headers, timeout=15)
-            
-            if response.status_code == 200:
-                path_parts = [p for p in url.split('/') if p]
-                nombre_archivo = f"{path_parts[-1]}.html"
-                ruta = os.path.join(self.carpeta_salida, nombre_archivo)
-                
-                with open(ruta, "w", encoding="utf-8") as f:
-                    f.write(response.text)
-                
-                # Registrar de forma segura con hilos
-                with self.lock:
-                    with open(self.log_file, "a") as f:
-                        f.write(url + "\n")
-                
-                return f"ÉXITO: {url}"
-            else:
-                return f"ERROR {response.status_code}: {url}"
-                
-        except Exception as e:
-            return f"CRÍTICO en {url}: {e}"
-
-    def ejecutar(self):
-        procesados = self.obtener_procesados()
-        pendientes = [u for u in self.lista_urls if u not in procesados]
-        
-        total_pendientes = len(pendientes)
-        if not pendientes:
-            print("No hay nuevas URLs pendientes de descarga.")
-            return
-
-        print(f"Iniciando descarga de {total_pendientes} vehículos con {self.max_workers} hilos...\n")
-        
-        # Usamos as_completed para imprimir el progreso EN TIEMPO REAL
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+# Ejecución
+url = "https://www.supercarros.com/sitemap.xml"
+procesar_sitemap(url)        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Lanzamos todas las tareas
             futuros = {executor.submit(self.descargar_url, url): url for url in pendientes}
             
