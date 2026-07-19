@@ -8,7 +8,7 @@ PASS="admin" # Cambia esto por tu contraseña real
 URL_TRACCAR="http://127.0.0.1:8082/api/devices"
 
 # ⚠️ IMPORTANTE: Debe ser el enlace "Raw" del archivo en GitHub
-URL_GITHUB="https://raw.githubusercontent.com/usuario/repo/rama/archivo.txt" 
+URL_GITHUB="https://raw.githubusercontent.com/miguel62angel3-beep/JMM/refs/heads/main/lista_de_dispositivos_a_simular.txt" 
 
 echo "Descargando lista de IMEIs desde GitHub..."
 
